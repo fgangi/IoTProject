@@ -89,7 +89,7 @@ def fingers_up(hand_landmarks):
     """
     finger_status = {}
     # Thumb: Check if tip (landmark 4) is to the right of IP joint (landmark 3).
-    finger_status["thumb"] = hand_landmarks.landmark[4].x > hand_landmarks.landmark[3].x
+    finger_status["thumb"] = hand_landmarks.landmark[4].x < hand_landmarks.landmark[3].x
     # Other fingers: Check if tip is above (smaller y than) the PIP joint.
     finger_status["index"] = hand_landmarks.landmark[8].y < hand_landmarks.landmark[6].y
     finger_status["middle"] = hand_landmarks.landmark[12].y < hand_landmarks.landmark[10].y
@@ -126,10 +126,8 @@ def iniciar_camara():
                     status = fingers_up(hand_landmarks)
                     
                     # Static gestures:
-                    # Light ON: Only index finger is up.
-                    if (status["index"] and
-                        status["middle"] and status["ring"] and 
-                        status["pinky"] and status["thumb"]):
+                    # Light ON: Open hand (all fingers up).
+                    if all(status.values()):
                         gesture = "light_on"
                     # Light OFF: Fist (no fingers up).
                     elif not any(status.values()):

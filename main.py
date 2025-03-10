@@ -74,7 +74,7 @@ mp_draw = mp.solutions.drawing_utils
 
 # Variables for tracking wrist movement and cooldown.
 prev_wrist_y = None
-brightness_threshold = 20  # Pixel difference threshold for brightness adjustment.
+brightness_threshold = 5  # Pixel difference threshold for brightness adjustment.
 command_cooldown = 0.5  # Cooldown period in seconds.
 last_command_time = time.time() # Timestamp of the last processed command.
 
@@ -140,25 +140,48 @@ def iniciar_camara():
                     
                     # If no static gesture, use wrist movement to adjust brightness.
                     if gesture is None:
-                        if prev_wrist_y is not None:
-                            delta_y = wrist_y - prev_wrist_y
-                            if abs(delta_y) > brightness_threshold:
-                                # Check cooldown before processing brightness adjustment.
-                                if current_time - last_command_time > command_cooldown:
-                                    if delta_y < 0:
-                                        cv2.putText(frame, "Increase Brightness", (10, 60),
-                                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                                        print("Increase brightness")
-                                        enviar_datos("encender_luz", data_encender_luz_izquierda(100, 1800))
 
-                                        last_command_time = current_time
-                                    elif delta_y > 0:
-                                        cv2.putText(frame, "Decrease Brightness", (10, 60),
-                                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                                        print("Decrease brightness")
-                                        enviar_datos("encender_luz", data_encender_luz_izquierda(10, 1800))
+                        if (not status["thumb"] and status["index"] and not status["middle"] and not status["ring"] and not status["pinky"]):
+                            if prev_wrist_y is not None:
+                                delta_y = wrist_y - prev_wrist_y
+                                if abs(delta_y) > brightness_threshold:
+                                    # Check cooldown before processing brightness adjustment.
+                                    if current_time - last_command_time > command_cooldown:
+                                        if delta_y < 0:
+                                            cv2.putText(frame, "Increase Brightness", (10, 60),
+                                                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                                            print("Increase brightness")
+                                            enviar_datos("encender_luz", data_encender_luz_izquierda(100, 1800))
 
-                                        last_command_time = current_time
+                                            last_command_time = current_time
+                                        elif delta_y > 0:
+                                            cv2.putText(frame, "Decrease Brightness", (10, 60),
+                                                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                                            print("Decrease brightness")
+                                            enviar_datos("encender_luz", data_encender_luz_izquierda(10, 1800))
+
+                                            last_command_time = current_time
+                        elif (status["thumb"] and status["index"] and not status["middle"] and not status["ring"] and not status["pinky"]):
+                            if prev_wrist_y is not None:
+                                delta_y = wrist_y - prev_wrist_y
+                                if abs(delta_y) > brightness_threshold:
+                                    # Check cooldown before processing brightness adjustment.
+                                    if current_time - last_command_time > command_cooldown:
+                                        if delta_y < 0:
+                                            cv2.putText(frame, "Increase Brightness", (10, 60),
+                                                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                                            print("Increase color")
+                                            enviar_datos("encender_luz", data_encender_luz_izquierda(50, 2600))
+
+                                            last_command_time = current_time
+                                        elif delta_y > 0:
+                                            cv2.putText(frame, "Decrease Brightness", (10, 60),
+                                                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                                            print("Decrease color")
+                                            enviar_datos("encender_luz", data_encender_luz_izquierda(50, 1000))
+
+                                            last_command_time = current_time
+
                         prev_wrist_y = wrist_y
                     else:
                         # Process static gestures if cooldown is over.
@@ -175,7 +198,7 @@ def iniciar_camara():
                                 print("Light OFF")
                                 enviar_datos("apagar_luz", data_apagar_luz_izquierda())
                                 last_command_time = current_time
-                        prev_wrist_y = wrist_y  # Reset wrist position after static gesture.
+                        # prev_wrist_y = wrist_y  Reset wrist position after static gesture.
                     
                     # Process only the first detected hand.
                     break

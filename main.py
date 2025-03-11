@@ -14,32 +14,32 @@ api_endpoints = {
 }
 
 
-def data_encender_luz_izquierda(intensidad, temp):
+def data_turn_on_left_light(intensity, temp):
     return {
         "entity_id": "light.lampara_izquierda",
-        "brightness_pct": intensidad,
+        "brightness_pct": intensity,
         "kelvin": temp
     }
 
-def data_data_encender_luz_derecha(intensidad, color):
+def data_turn_on_right_light(intensity, color):
     return {
         "entity_id": "light.lampara_derecha",
-        "brightness_pct": intensidad,
+        "brightness_pct": intensity,
         "rgb_color": color
     }
 
-def data_apagar_luz_izquierda():
+def data_turn_off_left_light():
     return {
         "entity_id": "light.lampara_izquierda",
     }
 
-def data_apagar_luz_derecha():
+def data_turn_off_right_light():
     return {
         "entity_id": "light.lampara_derecha",
     }
 
 
-def obtener_datos(endpoint):
+def get_data(endpoint):
     url = api_endpoints.get(endpoint)
 
     if url:
@@ -47,20 +47,20 @@ def obtener_datos(endpoint):
             response = requests.get(url, headers=headers)
 
             if response.status_code == 200:
-                datos = response.json()
+                data = response.json()
             else:
                 print(f"Error: {response.status_code}")
         except requests.exceptions.RequestException as e:
             print(f"Error: {e}")
 
-def enviar_datos(endpoint, data):
+def send_data(endpoint, data):
     url = api_endpoints.get(endpoint)
     if url:
         try:
             response = requests.post(url, headers=headers, json=data)
 
             if response.status_code == 200:
-                datos = response.json()
+                data = response.json()
             else:
                 print(f"Error: {response.status_code}")
         except requests.exceptions.RequestException as e:
@@ -76,7 +76,7 @@ mp_draw = mp.solutions.drawing_utils
 prev_wrist_y = None
 brightness_threshold = 5  # Pixel difference threshold for brightness adjustment.
 command_cooldown = 0.5  # Cooldown period in seconds.
-last_command_time = time.time() # Timestamp of the last processed command.
+last_command_time = time.time()  # Timestamp of the last processed command.
 
 # Start video capture.
 cap = cv2.VideoCapture(0)
@@ -98,9 +98,9 @@ def fingers_up(hand_landmarks):
     return finger_status
 
 
-def iniciar_camara():
+def start_camera():
     global prev_wrist_y, last_command_time
-    print("Cámara activada")
+    print("Camera activated")
     try:
         while True:
             ret, frame = cap.read()
@@ -151,15 +151,13 @@ def iniciar_camara():
                                             cv2.putText(frame, "Increase Brightness", (10, 60),
                                                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                                             print("Increase brightness")
-                                            enviar_datos("encender_luz", data_encender_luz_izquierda(100, 1800))
-
+                                            send_data("encender_luz", data_turn_on_left_light(100, 1800))
                                             last_command_time = current_time
                                         elif delta_y > 0:
                                             cv2.putText(frame, "Decrease Brightness", (10, 60),
                                                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                                             print("Decrease brightness")
-                                            enviar_datos("encender_luz", data_encender_luz_izquierda(10, 1800))
-
+                                            send_data("encender_luz", data_turn_on_left_light(10, 1800))
                                             last_command_time = current_time
                         elif (status["thumb"] and status["index"] and not status["middle"] and not status["ring"] and not status["pinky"]):
                             if prev_wrist_y is not None:
@@ -171,15 +169,13 @@ def iniciar_camara():
                                             cv2.putText(frame, "Increase Brightness", (10, 60),
                                                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                                             print("Increase color")
-                                            enviar_datos("encender_luz", data_encender_luz_izquierda(50, 2600))
-
+                                            send_data("encender_luz", data_turn_on_left_light(50, 2600))
                                             last_command_time = current_time
                                         elif delta_y > 0:
                                             cv2.putText(frame, "Decrease Brightness", (10, 60),
                                                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                                             print("Decrease color")
-                                            enviar_datos("encender_luz", data_encender_luz_izquierda(50, 1000))
-
+                                            send_data("encender_luz", data_turn_on_left_light(50, 1000))
                                             last_command_time = current_time
 
                         prev_wrist_y = wrist_y
@@ -190,13 +186,13 @@ def iniciar_camara():
                                 cv2.putText(frame, "Light ON", (10, 30),
                                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                                 print("Light ON")
-                                enviar_datos("encender_luz", data_encender_luz_izquierda(50, 1800))
+                                send_data("encender_luz", data_turn_on_left_light(50, 1800))
                                 last_command_time = current_time
                             elif gesture == "light_off":
                                 cv2.putText(frame, "Light OFF", (10, 30),
                                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                                 print("Light OFF")
-                                enviar_datos("apagar_luz", data_apagar_luz_izquierda())
+                                send_data("apagar_luz", data_turn_off_left_light())
                                 last_command_time = current_time
                         # prev_wrist_y = wrist_y  Reset wrist position after static gesture.
                     
@@ -208,11 +204,11 @@ def iniciar_camara():
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
     except Exception as e:
-            print("Error en el bucle principal:", e)
+            print("Error in main loop:", e)
 
     cap.release()
     cv2.destroyAllWindows()
 
-# Bucle infinito
+# Infinite loop
 if __name__ == "__main__":
-    iniciar_camara()
+    start_camera()

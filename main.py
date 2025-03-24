@@ -54,6 +54,7 @@ def send_data(endpoint, data):
 
 # -------------------------------
 # New code for mapping left hand to left light and right hand to right light
+# with separate finger detection functions for each hand.
 # -------------------------------
 
 # Global variables for each hand
@@ -70,13 +71,26 @@ mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(max_num_hands=2, min_detection_confidence=0.7)
 mp_draw = mp.solutions.drawing_utils
 
-def fingers_up(hand_landmarks):
+def fingers_up_right(hand_landmarks):
     """
-    Determines which fingers are extended.
-    Compares x for thumb and y for the other fingers.
+    Determines which fingers are extended for the right hand.
+    For the right hand, the thumb is extended if the tip is to the left of the IP joint.
     """
     finger_status = {}
     finger_status["thumb"] = hand_landmarks.landmark[4].x < hand_landmarks.landmark[3].x
+    finger_status["index"] = hand_landmarks.landmark[8].y < hand_landmarks.landmark[6].y
+    finger_status["middle"] = hand_landmarks.landmark[12].y < hand_landmarks.landmark[10].y
+    finger_status["ring"] = hand_landmarks.landmark[16].y < hand_landmarks.landmark[14].y
+    finger_status["pinky"] = hand_landmarks.landmark[20].y < hand_landmarks.landmark[18].y
+    return finger_status
+
+def fingers_up_left(hand_landmarks):
+    """
+    Determines which fingers are extended for the left hand.
+    For the left hand (if turned backwards), the thumb is extended if the tip is to the right of the IP joint.
+    """
+    finger_status = {}
+    finger_status["thumb"] = hand_landmarks.landmark[4].x > hand_landmarks.landmark[3].x
     finger_status["index"] = hand_landmarks.landmark[8].y < hand_landmarks.landmark[6].y
     finger_status["middle"] = hand_landmarks.landmark[12].y < hand_landmarks.landmark[10].y
     finger_status["ring"] = hand_landmarks.landmark[16].y < hand_landmarks.landmark[14].y
@@ -117,7 +131,7 @@ def start_camera():
             if not ret:
                 break
 
-            # Mirror the image for a natural view
+            # Mirror the image for display only (processing is done on the flipped frame)
             frame = cv2.flip(frame, 1)
             h, w, _ = frame.shape
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -126,13 +140,15 @@ def start_camera():
 
             if results.multi_hand_landmarks and results.multi_handedness:
                 for i, hand_landmarks in enumerate(results.multi_hand_landmarks):
-                    # Identify if this is the left or right hand
+                    # Identify if this is the left or right hand and call the corresponding finger detection
                     label = results.multi_handedness[i].classification[0].label
-                    status = fingers_up(hand_landmarks)
+                    if label == "Left":
+                        status = fingers_up_left(hand_landmarks)
+                    else:  # Assume Right
+                        status = fingers_up_right(hand_landmarks)
                     mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
                     if label == "Left":
-                        # Use left hand to control left light
                         wrist_y = int(hand_landmarks.landmark[0].y * h)
                         # Open hand gesture to turn left light on
                         if all(status.values()):
@@ -164,7 +180,6 @@ def start_camera():
                                 left_hand_prev_y = wrist_y
 
                     elif label == "Right":
-                        # Use right hand to control right light
                         wrist_y = int(hand_landmarks.landmark[0].y * h)
                         # Open hand gesture to turn right light on
                         if all(status.values()):
@@ -195,7 +210,6 @@ def start_camera():
                                             send_dynamic_command_right("decrease_brightness")
                                 right_hand_prev_y = wrist_y
 
-            # Display labels for clarity
             cv2.putText(frame, "Left Light (Left Hand)", (10, h - 60),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
             cv2.putText(frame, "Right Light (Right Hand)", (10, h - 20),

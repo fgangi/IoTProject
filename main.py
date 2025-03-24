@@ -53,17 +53,19 @@ def send_data(endpoint, data):
             print(f"Error: {e}")
 
 # -------------------------------
-# New code for two-handed operation
+# New code for mapping left hand to left light and right hand to right light
 # -------------------------------
 
-# Global variables
-selected_device = "left_light"  # default selected device
-right_hand_prev_y = None        # to track vertical movement of the right hand
-command_cooldown = 0.5          # cooldown time between commands (in seconds)
-last_command_time = time.time() # timestamp of last command
-brightness_threshold = 5        # pixel difference threshold for movement
+# Global variables for each hand
+left_hand_prev_y = None       # Track vertical movement of the left hand
+right_hand_prev_y = None      # Track vertical movement of the right hand
+command_cooldown_left = 0.5   # Cooldown for left hand commands (seconds)
+command_cooldown_right = 0.5  # Cooldown for right hand commands (seconds)
+last_command_time_left = time.time()
+last_command_time_right = time.time()
+brightness_threshold = 5      # Minimum pixel difference to detect movement
 
-# Initialize MediaPipe with two-hand detection
+# Initialize MediaPipe for two-hand detection
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(max_num_hands=2, min_detection_confidence=0.7)
 mp_draw = mp.solutions.drawing_utils
@@ -71,7 +73,7 @@ mp_draw = mp.solutions.drawing_utils
 def fingers_up(hand_landmarks):
     """
     Determines which fingers are extended.
-    For thumb, compares x-coordinates; for other fingers, compares y-coordinates.
+    Compares x for thumb and y for the other fingers.
     """
     finger_status = {}
     finger_status["thumb"] = hand_landmarks.landmark[4].x < hand_landmarks.landmark[3].x
@@ -81,45 +83,32 @@ def fingers_up(hand_landmarks):
     finger_status["pinky"] = hand_landmarks.landmark[20].y < hand_landmarks.landmark[18].y
     return finger_status
 
-def send_dynamic_command(command):
-    """
-    Routes the dynamic command to the selected device.
-    """
-    global selected_device, last_command_time
+def send_dynamic_command_left(command):
+    global last_command_time_left
     if command == "increase_brightness":
-        if selected_device == "left_light":
-            send_data("encender_luz", data_turn_on_left_light(100, 1800))
-        elif selected_device == "right_light":
-            send_data("encender_luz", data_turn_on_right_light(100, [0, 0, 255]))
+        send_data("encender_luz", data_turn_on_left_light(100, 1800))
     elif command == "decrease_brightness":
-        if selected_device == "left_light":
-            send_data("encender_luz", data_turn_on_left_light(10, 1800))
-        elif selected_device == "right_light":
-            send_data("encender_luz", data_turn_on_right_light(10, [0, 0, 255]))
-    elif command == "increase_color":
-        if selected_device == "left_light":
-            send_data("encender_luz", data_turn_on_left_light(50, 2600))
-        elif selected_device == "right_light":
-            send_data("encender_luz", data_turn_on_right_light(50, [0, 255, 0]))
-    elif command == "decrease_color":
-        if selected_device == "left_light":
-            send_data("encender_luz", data_turn_on_left_light(50, 1000))
-        elif selected_device == "right_light":
-            send_data("encender_luz", data_turn_on_right_light(50, [0, 255, 0]))
+        send_data("encender_luz", data_turn_on_left_light(10, 1800))
     elif command == "light_on":
-        if selected_device == "left_light":
-            send_data("encender_luz", data_turn_on_left_light(50, 1800))
-        elif selected_device == "right_light":
-            send_data("encender_luz", data_turn_on_right_light(50, [0, 0, 255]))
+        send_data("encender_luz", data_turn_on_left_light(50, 1800))
     elif command == "light_off":
-        if selected_device == "left_light":
-            send_data("apagar_luz", data_turn_off_left_light())
-        elif selected_device == "right_light":
-            send_data("apagar_luz", data_turn_off_right_light())
-    last_command_time = time.time()
+        send_data("apagar_luz", data_turn_off_left_light())
+    last_command_time_left = time.time()
+
+def send_dynamic_command_right(command):
+    global last_command_time_right
+    if command == "increase_brightness":
+        send_data("encender_luz", data_turn_on_right_light(100, [0, 0, 255]))
+    elif command == "decrease_brightness":
+        send_data("encender_luz", data_turn_on_right_light(10, [0, 0, 255]))
+    elif command == "light_on":
+        send_data("encender_luz", data_turn_on_right_light(50, [0, 0, 255]))
+    elif command == "light_off":
+        send_data("apagar_luz", data_turn_off_right_light())
+    last_command_time_right = time.time()
 
 def start_camera():
-    global right_hand_prev_y, last_command_time, selected_device
+    global left_hand_prev_y, right_hand_prev_y, last_command_time_left, last_command_time_right
     cap = cv2.VideoCapture(0)
     print("Camera activated")
     try:
@@ -128,7 +117,7 @@ def start_camera():
             if not ret:
                 break
 
-            # Mirror the image for a more natural view
+            # Mirror the image for a natural view
             frame = cv2.flip(frame, 1)
             h, w, _ = frame.shape
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -137,78 +126,79 @@ def start_camera():
 
             if results.multi_hand_landmarks and results.multi_handedness:
                 for i, hand_landmarks in enumerate(results.multi_hand_landmarks):
-                    # Get the hand label (Left or Right)
+                    # Identify if this is the left or right hand
                     label = results.multi_handedness[i].classification[0].label
                     status = fingers_up(hand_landmarks)
                     mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-                    # ---------------------------
-                    # Left hand for device selection
-                    # ---------------------------
                     if label == "Left":
-                        # If the hand is open (all fingers up), select left light
-                        if all(status.values()):
-                            selected_device = "left_light"
-                            cv2.putText(frame, "Selected: Left Light", (10, 30),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
-                        # If the hand is closed (no fingers up), select right light
-                        elif not any(status.values()):
-                            selected_device = "right_light"
-                            cv2.putText(frame, "Selected: Right Light", (10, 30),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
-                        # Additional gestures for selection can be added here.
-                    
-                    # ---------------------------
-                    # Right hand for dynamic commands
-                    # ---------------------------
-                    elif label == "Right":
+                        # Use left hand to control left light
                         wrist_y = int(hand_landmarks.landmark[0].y * h)
-                        # Static gesture: open hand to turn on the light
+                        # Open hand gesture to turn left light on
                         if all(status.values()):
-                            if current_time - last_command_time > command_cooldown:
-                                cv2.putText(frame, "Turning Light On", (10, 60),
+                            if current_time - last_command_time_left > command_cooldown_left:
+                                cv2.putText(frame, "Left Light On", (10, 60),
                                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                                send_dynamic_command("light_on")
-                        # Static gesture: closed fist to turn off the light
+                                send_dynamic_command_left("light_on")
+                        # Closed fist to turn left light off
                         elif not any(status.values()):
-                            if current_time - last_command_time > command_cooldown:
-                                cv2.putText(frame, "Turning Light Off", (10, 60),
+                            if current_time - last_command_time_left > command_cooldown_left:
+                                cv2.putText(frame, "Left Light Off", (10, 60),
                                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                                send_dynamic_command("light_off")
+                                send_dynamic_command_left("light_off")
                         else:
-                            # Dynamic brightness adjustment with only the index finger up
+                            # Adjust brightness with dynamic movement (only index finger up)
+                            if (not status["thumb"] and status["index"] and not status["middle"] and
+                                not status["ring"] and not status["pinky"]):
+                                if left_hand_prev_y is not None:
+                                    delta_y = wrist_y - left_hand_prev_y
+                                    if abs(delta_y) > brightness_threshold and current_time - last_command_time_left > command_cooldown_left:
+                                        if delta_y < 0:
+                                            cv2.putText(frame, "Left Light Increase Brightness", (10, 60),
+                                                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                                            send_dynamic_command_left("increase_brightness")
+                                        elif delta_y > 0:
+                                            cv2.putText(frame, "Left Light Decrease Brightness", (10, 60),
+                                                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                                            send_dynamic_command_left("decrease_brightness")
+                                left_hand_prev_y = wrist_y
+
+                    elif label == "Right":
+                        # Use right hand to control right light
+                        wrist_y = int(hand_landmarks.landmark[0].y * h)
+                        # Open hand gesture to turn right light on
+                        if all(status.values()):
+                            if current_time - last_command_time_right > command_cooldown_right:
+                                cv2.putText(frame, "Right Light On", (10, 100),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                                send_dynamic_command_right("light_on")
+                        # Closed fist to turn right light off
+                        elif not any(status.values()):
+                            if current_time - last_command_time_right > command_cooldown_right:
+                                cv2.putText(frame, "Right Light Off", (10, 100),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                                send_dynamic_command_right("light_off")
+                        else:
+                            # Adjust brightness with dynamic movement (only index finger up)
                             if (not status["thumb"] and status["index"] and not status["middle"] and 
                                 not status["ring"] and not status["pinky"]):
                                 if right_hand_prev_y is not None:
                                     delta_y = wrist_y - right_hand_prev_y
-                                    if abs(delta_y) > brightness_threshold and current_time - last_command_time > command_cooldown:
+                                    if abs(delta_y) > brightness_threshold and current_time - last_command_time_right > command_cooldown_right:
                                         if delta_y < 0:
-                                            cv2.putText(frame, "Increasing Brightness", (10, 60),
+                                            cv2.putText(frame, "Right Light Increase Brightness", (10, 100),
                                                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                                            send_dynamic_command("increase_brightness")
+                                            send_dynamic_command_right("increase_brightness")
                                         elif delta_y > 0:
-                                            cv2.putText(frame, "Decreasing Brightness", (10, 60),
+                                            cv2.putText(frame, "Right Light Decrease Brightness", (10, 100),
                                                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                                            send_dynamic_command("decrease_brightness")
-                                right_hand_prev_y = wrist_y
-                            # Dynamic color adjustment with thumb and index fingers up
-                            elif (status["thumb"] and status["index"] and not status["middle"] and 
-                                  not status["ring"] and not status["pinky"]):
-                                if right_hand_prev_y is not None:
-                                    delta_y = wrist_y - right_hand_prev_y
-                                    if abs(delta_y) > brightness_threshold and current_time - last_command_time > command_cooldown:
-                                        if delta_y < 0:
-                                            cv2.putText(frame, "Increasing Color", (10, 60),
-                                                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                                            send_dynamic_command("increase_color")
-                                        elif delta_y > 0:
-                                            cv2.putText(frame, "Decreasing Color", (10, 60),
-                                                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                                            send_dynamic_command("decrease_color")
+                                            send_dynamic_command_right("decrease_brightness")
                                 right_hand_prev_y = wrist_y
 
-            # Display the currently selected device
-            cv2.putText(frame, f"Device: {selected_device}", (10, h - 20),
+            # Display labels for clarity
+            cv2.putText(frame, "Left Light (Left Hand)", (10, h - 60),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            cv2.putText(frame, "Right Light (Right Hand)", (10, h - 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
             cv2.imshow("Gesture Control", frame)
             if cv2.waitKey(1) & 0xFF == ord("q"):

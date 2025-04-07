@@ -3,9 +3,6 @@ import requests
 import mediapipe as mp
 import time
 
-# -------------------------------
-# Predefined functions (DO NOT MODIFY)
-# -------------------------------
 headers = {
     "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI0NDdlODRkYTExNmI0Yzk2YjIxM2ExMDdhMTY2NmVmMCIsImlhdCI6MTY3ODI3MTU4OSwiZXhwIjoxOTkzNjMxNTg5fQ.-jUvyVsmzQMxrkRd1kLNM_PIH1HTGnzsOzESDWlPukE",
     "content-type": "application/json",
@@ -52,10 +49,6 @@ def send_data(endpoint, data):
         except requests.exceptions.RequestException as e:
             print(f"Error: {e}")
 
-# -------------------------------
-# New code for mapping left hand to left light and right hand to right light
-# with separate finger detection functions for each hand.
-# -------------------------------
 
 # Global variables for each hand
 left_hand_prev_y = None       # Track vertical movement of the left hand
@@ -65,6 +58,19 @@ command_cooldown_right = 0.5  # Cooldown for right hand commands (seconds)
 last_command_time_left = time.time()
 last_command_time_right = time.time()
 brightness_threshold = 5      # Minimum pixel difference to detect movement
+
+# Global variables for right light color control
+# Updated color presets: Blue, Green, Red, Yellow, Purple, Cyan, Orange
+color_presets = [
+    [0, 0, 255],    # Blue
+    [0, 255, 0],    # Green
+    [255, 0, 0],    # Red
+    [255, 255, 0],  # Yellow
+    [128, 0, 128],  # Purple
+    [0, 255, 255],  # Cyan
+    [255, 165, 0]   # Orange
+]
+right_light_color_index = 0
 
 # Initialize MediaPipe for two-hand detection
 mp_hands = mp.solutions.hands
@@ -110,15 +116,21 @@ def send_dynamic_command_left(command):
     last_command_time_left = time.time()
 
 def send_dynamic_command_right(command):
-    global last_command_time_right
+    global last_command_time_right, right_light_color_index, color_presets
     if command == "increase_brightness":
-        send_data("encender_luz", data_turn_on_right_light(100, [0, 0, 255]))
+        send_data("encender_luz", data_turn_on_right_light(100, color_presets[right_light_color_index]))
     elif command == "decrease_brightness":
-        send_data("encender_luz", data_turn_on_right_light(10, [0, 0, 255]))
+        send_data("encender_luz", data_turn_on_right_light(10, color_presets[right_light_color_index]))
     elif command == "light_on":
-        send_data("encender_luz", data_turn_on_right_light(50, [0, 0, 255]))
+        send_data("encender_luz", data_turn_on_right_light(50, color_presets[right_light_color_index]))
     elif command == "light_off":
         send_data("apagar_luz", data_turn_off_right_light())
+    elif command == "increase_color":
+        right_light_color_index = (right_light_color_index + 1) % len(color_presets)
+        send_data("encender_luz", data_turn_on_right_light(50, color_presets[right_light_color_index]))
+    elif command == "decrease_color":
+        right_light_color_index = (right_light_color_index - 1) % len(color_presets)
+        send_data("encender_luz", data_turn_on_right_light(50, color_presets[right_light_color_index]))
     last_command_time_right = time.time()
 
 def start_camera():
@@ -140,30 +152,27 @@ def start_camera():
 
             if results.multi_hand_landmarks and results.multi_handedness:
                 for i, hand_landmarks in enumerate(results.multi_hand_landmarks):
-                    # Identify if this is the left or right hand and call the corresponding finger detection
+                    # Identify if this is the left or right hand and use corresponding finger detection
                     label = results.multi_handedness[i].classification[0].label
                     if label == "Left":
                         status = fingers_up_left(hand_landmarks)
-                    else:  # Assume Right
+                    else:
                         status = fingers_up_right(hand_landmarks)
                     mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
                     if label == "Left":
                         wrist_y = int(hand_landmarks.landmark[0].y * h)
-                        # Open hand gesture to turn left light on
                         if all(status.values()):
                             if current_time - last_command_time_left > command_cooldown_left:
                                 cv2.putText(frame, "Left Light On", (10, 60),
                                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                                 send_dynamic_command_left("light_on")
-                        # Closed fist to turn left light off
                         elif not any(status.values()):
                             if current_time - last_command_time_left > command_cooldown_left:
                                 cv2.putText(frame, "Left Light Off", (10, 60),
                                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                                 send_dynamic_command_left("light_off")
                         else:
-                            # Adjust brightness with dynamic movement (only index finger up)
                             if (not status["thumb"] and status["index"] and not status["middle"] and
                                 not status["ring"] and not status["pinky"]):
                                 if left_hand_prev_y is not None:
@@ -181,13 +190,11 @@ def start_camera():
 
                     elif label == "Right":
                         wrist_y = int(hand_landmarks.landmark[0].y * h)
-                        # Open hand gesture to turn right light on
                         if all(status.values()):
                             if current_time - last_command_time_right > command_cooldown_right:
                                 cv2.putText(frame, "Right Light On", (10, 100),
                                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                                 send_dynamic_command_right("light_on")
-                        # Closed fist to turn right light off
                         elif not any(status.values()):
                             if current_time - last_command_time_right > command_cooldown_right:
                                 cv2.putText(frame, "Right Light Off", (10, 100),
@@ -208,6 +215,22 @@ def start_camera():
                                             cv2.putText(frame, "Right Light Decrease Brightness", (10, 100),
                                                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                                             send_dynamic_command_right("decrease_brightness")
+                                right_hand_prev_y = wrist_y
+                            
+                            # Dynamic color adjustment: if thumb and index are up, adjust color
+                            elif (status["thumb"] and status["index"] and not status["middle"] and 
+                                  not status["ring"] and not status["pinky"]):
+                                if right_hand_prev_y is not None:
+                                    delta_y = wrist_y - right_hand_prev_y
+                                    if abs(delta_y) > brightness_threshold and current_time - last_command_time_right > command_cooldown_right:
+                                        if delta_y < 0:
+                                            cv2.putText(frame, "Right Light Increase Color", (10, 100),
+                                                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                                            send_dynamic_command_right("increase_color")
+                                        elif delta_y > 0:
+                                            cv2.putText(frame, "Right Light Decrease Color", (10, 100),
+                                                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                                            send_dynamic_command_right("decrease_color")
                                 right_hand_prev_y = wrist_y
 
             cv2.putText(frame, "Left Light (Left Hand)", (10, h - 60),
